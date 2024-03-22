@@ -1,5 +1,9 @@
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+import jwt
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 import mysql.connector
 from dotenv import load_dotenv
@@ -7,6 +11,10 @@ import os
 
 load_dotenv()
 app = FastAPI()
+
+SECRET_KEY = os.getenv("JWT_SECRETKEY")
+ALGORITHM = os.getenv("JWT_ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES"))
 
 mydb = mysql.connector.connect(
     host= os.getenv("DB_HOST"),
@@ -28,6 +36,72 @@ class newProject(BaseModel):
     download: str
     laptop_img: str
     mobile_img: str
+
+class User(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_user(username: str):
+    query = "SELECT * FROM users WHERE username = %s"
+    global_cursor.execute(query, (username,))
+    user = global_cursor.fetchone()
+    return user
+
+def create_access_token(data: dict, expires_delta: timedelta):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+@app.post("/register", status_code=201)
+def register_user(user: User):
+    try:
+        existing_user = get_user(user.username)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Username already registered")
+
+        hashed_password = pwd_context.hash(user.password)
+
+        insert_query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
+        insert_values = (user.username, user.email, hashed_password)
+        global_cursor.execute(insert_query, insert_values)
+        mydb.commit()
+
+        return {"message": "User registered successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/login", status_code=200)
+def login_user(user: User):
+    try:
+        # Obter usuário do banco de dados
+        query = "SELECT * FROM users WHERE username = %s"
+        global_cursor.execute(query, (user.username,))
+        db_user = global_cursor.fetchone()
+        print(db_user)        
+        # Verificar se o usuário existe e se a senha está correta
+        if db_user and verify_password(user.password, db_user[2]):  # db_user[3] é a posição do hashed_password no resultado
+            # Gerar token JWT
+            access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            access_token = create_access_token(data={"sub": db_user[1]}, expires_delta=access_token_expires)  # db_user[1] é a posição do username
+            return {"access_token": access_token, "token_type": "bearer"}
+        else:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))      
 
 @app.get('/', status_code=200)
 def home():
