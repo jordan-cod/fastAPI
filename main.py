@@ -146,7 +146,7 @@ def login_user(user: User):
 def home():
     return {'message': 'API de projetos pessoais.'}
 
-@app.get('/projects/{project_id}', status_code=200)
+@app.get('/projects/{project_id}', response_model=Project, status_code=200)
 def get_one_project(project_id: int):
     try:
         query = "SELECT * FROM projects WHERE id = %s"
@@ -154,7 +154,21 @@ def get_one_project(project_id: int):
         result = global_cursor.fetchone()
         mydb.commit()
         if result:
-            return result
+            project_obj = Project(
+                id=result[0],
+                img=str(result[1]),
+                title=str(result[2]),
+                descript=str(result[3]),
+                descript_ptbr=str(result[4]),
+                url=str(result[5]),
+                download=str(result[6]),
+                tecnologies=str(result[7]),
+                live_url=str(result[8]),
+                mobile_img=str(result[9]),
+                laptop_img=str(result[10]),
+                category=str(result[11])
+            )
+            return project_obj
         else:
             raise HTTPException(status_code=404, detail=f"Projeto com id {project_id} não encontrado.")
     except Exception as e:
