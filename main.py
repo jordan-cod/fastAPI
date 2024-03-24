@@ -192,8 +192,8 @@ def get_one_project(project_id: int):
                 download=str(result[6]),
                 tecnologies=str(result[7]),
                 live_url=str(result[8]),
-                mobile_img=str(result[9]),
-                laptop_img=str(result[10]),
+                laptop_img=str(result[9]),
+                mobile_img=str(result[10]),
                 category=str(result[11])
             )
             return project_obj
